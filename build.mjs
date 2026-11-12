@@ -3,7 +3,7 @@
 //   node build.mjs --content <dir> [--vault <dir>] --out <dir> [--site-url https://example.com]
 // 1. <content>/site/** is copied to <out> as is.
 // 2. With --vault, the vault's published notes become a blog under <out>/blog/ (lib/blog.mjs).
-// Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml" })
+// Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml", "stylesheets" })
 // and can be overridden with --blog-title / --blog-description.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,6 +47,7 @@ export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescri
       vault, outDir: path.join(out, base.replace(/^\//, '')), base, siteUrl,
       title: blogTitle || cfg.title || 'Blog', description: blogDescription || cfg.description || '',
       siteName: cfg.siteName || '', homeUrl: cfg.homeUrl || '/', allowHtml: !!cfg.allowHtml,
+      stylesheets: Array.isArray(cfg.stylesheets) ? cfg.stylesheets : [],
     });
     addToSitemap(path.join(out, 'sitemap.xml'), siteUrl, blog.urls);
   }

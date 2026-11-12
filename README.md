@@ -36,6 +36,9 @@ node build.mjs --content <content-dir> --vault <vault-dir> --out dist --site-url
 - `<content-dir>/blog.config.json` sets `title`, `description`, `siteName` (shown in the header breadcrumb),
   `homeUrl`, `base` (default `/blog`), `siteUrl` and `allowHtml` (default false). `--blog-title` and
   `--blog-description` override it.
+- `stylesheets` in `blog.config.json` is a list of extra CSS files loaded after the built-in Obsidian theme on
+  every blog page, for example `["/assets/blog-theme.css"]`. Use it to make the blog match the rest of a site
+  (colours, fonts, header) without changing the engine. Paths are served from the content's own files.
 
 Try it with the bundled example: `npm run build:example`, then `cd examples/dist && python3 -m http.server 8000`
 and open http://localhost:8000/blog/. Add `?theme=dark` or `?theme=light` to a blog URL to preview a theme.
