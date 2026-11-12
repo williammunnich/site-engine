@@ -1,14 +1,28 @@
 #!/usr/bin/env node
-// site-engine: builds the static site.
-//   node build.mjs --content <dir> [--vault <dir>] --out <dir> [--site-url https://example.com]
-// 1. <content>/site/** is copied to <out> as is.
-// 2. With --vault, the vault's published notes become a blog under <out>/blog/ (lib/blog.mjs).
-// Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml", "stylesheets" })
-// and can be overridden with --blog-title / --blog-description.
+/**
+ * @file build.mjs
+ * Command-line entry point of site-engine: builds the static site.
+ *
+ *   node build.mjs --content <dir> [--vault <dir>] --out <dir> [--site-url https://example.com]
+ *
+ * 1. <content>/site/** is copied to <out> as is.
+ * 2. With --vault, the vault's published notes become a blog under <out>/blog/ (lib/blog.mjs).
+ * Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml", "stylesheets" })
+ * and can be overridden with --blog-title / --blog-description.
+ *
+ * Project: site-engine
+ * @author Claude (Anthropic), written for and prompted by William Munnich
+ * @date Last edited 2026-11-12
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildBlog } from './lib/blog.mjs';
 
+/**
+ * Turns "--key value" command-line words into an object; a flag with no value becomes true.
+ * @param {string[]} argv - The words after the script name.
+ * @returns {Object<string, string|boolean>} Option names (without the dashes) and their values.
+ */
 function args(argv) {
   const o = {};
   for (let i = 0; i < argv.length; i++) {
@@ -20,6 +34,13 @@ function args(argv) {
   return o;
 }
 
+/**
+ * Adds the blog's pages to an existing sitemap.xml, skipping addresses that are already listed.
+ * @param {string} file - Path of the sitemap.xml to update.
+ * @param {string} siteUrl - Site address without a trailing slash, e.g. https://example.com.
+ * @param {string[]} urls - Site-relative addresses to add, e.g. "/blog/hello/".
+ * @returns {boolean} False when there is no sitemap file or no site address, otherwise true.
+ */
 export function addToSitemap(file, siteUrl, urls) {
   if (!fs.existsSync(file) || !siteUrl) return false;
   let xml = fs.readFileSync(file, 'utf8');
@@ -31,6 +52,19 @@ export function addToSitemap(file, siteUrl, urls) {
   return true;
 }
 
+/**
+ * Builds the site: empties the output folder, copies <content>/site into it and, when a vault is
+ * given, renders the blog and adds its pages to the sitemap.
+ * @param {Object} o - Build options.
+ * @param {string} o.content - Content folder; must hold a site/ folder and may hold blog.config.json.
+ * @param {string} [o.vault] - Obsidian vault to publish as the blog.
+ * @param {string} o.out - Output folder; it is deleted and rewritten.
+ * @param {string} [o.siteUrl] - Public site address; falls back to siteUrl in blog.config.json.
+ * @param {string} [o.blogTitle] - Overrides the blog title from the config.
+ * @param {string} [o.blogDescription] - Overrides the blog description from the config.
+ * @returns {{out: string, blog: Object|null}} The output folder and what buildBlog wrote (null without a vault).
+ * @throws {Error} When content or out is missing, or the content folder has no site/ folder.
+ */
 export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescription }) {
   if (!content || !out) throw new Error('usage: node build.mjs --content <dir> [--vault <dir>] --out <dir> [--site-url https://…]');
   const site = path.join(content, 'site');
@@ -54,6 +88,7 @@ export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescri
   return { out, blog };
 }
 
+// Runs the build when this file is started from the command line (not when it is imported).
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('build.mjs')) {
   const a = args(process.argv.slice(2));
   try {

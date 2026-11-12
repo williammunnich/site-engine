@@ -1,4 +1,14 @@
-// node --test test/
+/**
+ * @file blog.test.mjs
+ * Tests for the builder: builds the example content and fixture vault once, then checks the publish
+ * rule, privacy, links, callouts, embeds, frontmatter, index/tag/feed pages and escaping.
+ *
+ * Run with: node --test test/
+ *
+ * Project: site-engine
+ * @author Claude (Anthropic), written for and prompted by William Munnich
+ * @date Last edited 2026-11-12
+ */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,10 +19,17 @@ import { build } from '../build.mjs';
 import { isPublished, parseNote } from '../lib/blog.mjs';
 import { createMarkdown, stripComments } from '../lib/markdown.mjs';
 
+/** Folder of this test file. */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+/** The fixture vault with published and private notes. */
 const VAULT = path.join(HERE, 'fixtures', 'vault');
+/** The example content folder that is copied as the site. */
 const CONTENT = path.join(HERE, '..', 'examples', 'content');
 
+/**
+ * Builds the site into a fresh temporary folder.
+ * @returns {{out: string, r: Object, files: string[], read: Function, all: Function}} The output folder, the build result, every written file, read(rel) for one file's text, and all() for every file's content joined.
+ */
 function buildOnce() {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'site-engine-test-'));
   const r = build({ content: CONTENT, vault: VAULT, out, siteUrl: 'https://example.com' });
@@ -20,6 +37,7 @@ function buildOnce() {
   (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); e.isDirectory() ? walk(f) : files.push(f); } })(out);
   return { out, r, files, read: rel => fs.readFileSync(path.join(out, rel), 'utf8'), all: () => files.map(f => fs.readFileSync(f).toString('latin1')).join('\n') };
 }
+/** The one build that all tests inspect. */
 const B = buildOnce();
 
 test('publish rule: posts/ folder or publish: true; never publish: false or draft: true', () => {
