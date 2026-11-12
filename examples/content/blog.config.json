@@ -1,0 +1,7 @@
+{
+  "title": "Devlog",
+  "description": "Notes from building a small company, written in Obsidian.",
+  "siteName": "example.com",
+  "homeUrl": "/",
+  "base": "/blog"
+}

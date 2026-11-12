@@ -1,0 +1,113 @@
+# Copy to .github/workflows/site-build.yml in the PRIVATE content repo (the one with site/ and blog.config.json).
+#
+# Builds the site from three repos:  this content repo  +  the public site-engine  +  the private Obsidian vault.
+# Runs on a push here, by hand (Actions → Run workflow), and when the vault's notify-site workflow sends
+# repository_dispatch "devlog-updated".
+#
+# Secrets and variables (Settings → Secrets and variables → Actions):
+#   secret DEVLOG_DEPLOY_KEY  read-only deploy key of the vault repo (private half). See docs/blog.md in site-engine.
+#   var    ENGINE_REPO        optional, default williammunnich/site-engine
+#   var    ENGINE_REF         optional tag/sha of site-engine to build with (pin it), default main
+#   var    VAULT_REPO         owner/name of the vault repo (required)
+#   var    SITE_URL           e.g. https://example.com
+#   var    DEPLOY_ENABLED     'true' to deploy. Leave unset: the build still runs and uploads dist as an artifact.
+#   var    AWS_ROLE_ARN       IAM role trusted for GitHub OIDC (this repo, main branch only), allowed to
+#                             s3:ListBucket/PutObject/DeleteObject on the site bucket and cloudfront:CreateInvalidation
+#   var    SITE_BUCKET, DIST_ID, AWS_REGION (default us-east-1)
+name: Build site
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [devlog-updated]
+
+concurrency:
+  group: site-build
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Content (this repo)
+        uses: actions/checkout@v4
+        with:
+          path: content
+
+      - name: Engine (public)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.ENGINE_REPO || 'williammunnich/site-engine' }}
+          ref: ${{ vars.ENGINE_REF || 'main' }}
+          path: engine
+
+      - name: Vault (private, read-only deploy key)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.VAULT_REPO }}
+          ssh-key: ${{ secrets.DEVLOG_DEPLOY_KEY }}
+          path: vault
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install and test the engine
+        working-directory: engine
+        run: |
+          npm ci
+          npm test
+
+      - name: Build
+        run: node engine/build.mjs --content content --vault vault --out dist --site-url "${{ vars.SITE_URL }}"
+
+      - name: Check nothing private slipped into dist
+        run: |
+          # notes outside posts/ without publish: true must not appear; spot-check that daily notes didn't ship
+          if ls vault/daily/*.md >/dev/null 2>&1; then
+            for f in vault/daily/*.md; do
+              grep -q '^publish: *true' "$f" && continue
+              slug=$(basename "$f" .md)
+              if [ -e "dist/blog/$slug" ]; then echo "private daily note $slug was published"; exit 1; fi
+            done
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Upload
+        run: |
+          # HTML and feeds revalidate on every visit; everything else is cached for a day
+          aws s3 sync dist "s3://${{ vars.SITE_BUCKET }}" --delete --exclude "*.html" --exclude "*.xml" \
+            --cache-control "public, max-age=86400"
+          aws s3 sync dist "s3://${{ vars.SITE_BUCKET }}" --delete --exclude "*" --include "*.html" --include "*.xml" \
+            --cache-control "no-cache"
+
+      - name: Invalidate CloudFront
+        run: aws cloudfront create-invalidation --distribution-id "${{ vars.DIST_ID }}" --paths "/*"
