@@ -158,6 +158,42 @@ depends on the change: [docs/release.md](docs/release.md).
 | `docs/release.md` | How a change to this engine reaches a site: push order, checklist, pinning, rollback |
 | `tools/make-png.py` | Writes small solid PNGs for fixtures, with no dependencies |
 
+## How this connects to the other projects
+
+Updated 2026-11-13. williammunnich.com, cloudcut.team, their AWS backends and the WM Chat iPhone app are one
+connected system. This section is the whole picture in short, so it can be read with only this repo at hand.
+
+**This repo's role:** the builder. It **receives** a content folder (`williammunnichcom-site`) and an Obsidian vault (`cloudcut-devlog`) and writes the finished site folder. It knows nothing about the chat, the statistics or the app, and sends nothing to them; it is listed here so the map is complete. Other people can use it for their own site without any of the other pieces.
+
+**The pieces.** Every repo is on William's Forgejo server as `forgejo:munnich/<name>.git`; the GitHub copies are
+`github.com/williammunnich/<name>`.
+
+| Piece | Repo | Where it runs |
+|---|---|---|
+| williammunnich.com: the pages, and the AWS setup for the three rows below | `williammunnichcom-site` (Forgejo; GitHub, private) | William's personal AWS account (S3 + CloudFront); live |
+| Chat service: takes visitor messages, stores them, sends push notifications | `williammunnichcom-site`, folder `aws/chat/` | the same account, at `wss://chat.williammunnich.com`; live |
+| Visit statistics | `williammunnichcom-site`, folder `aws/stats/` | the same account |
+| WM Chat, the iPhone app (Chats, Live, Stats). Named "WM Chat Cloudcut" in TestFlight | `williammunnichcom-site`, folder `ios/` | William's iPhone; reads the chat service and the statistics |
+| cloudcut.team: the site of Cloudcut LLC | `cloudcut-team-site` (Forgejo; GitHub, private) | Cloudcut LLC's own AWS account (S3 + CloudFront), at a test address; the public cloudcut.team is still an older page at A2 Hosting |
+| web-messenger: the generic cut of the chat (widget, service, web inbox, a chat-only app) | `web-messenger` (Forgejo; GitHub) | not deployed; the live chat is the copy in `williammunnichcom-site` |
+| site-engine: builds williammunnich.com and turns the vault into its blog | `site-engine` (Forgejo; GitHub, public) | runs during a build, on the Mac or in GitHub Actions; not a service |
+| cloudcut-devlog: an Obsidian vault; its `posts/` folder is the blog at williammunnich.com/blog | `cloudcut-devlog` (Forgejo; GitHub, private) | text only |
+
+**What talks to what:**
+
+```
+williammunnich.com pages ── chat bubble (WebSocket) ───────────▶ chat service ◀── WebSocket, /owner/* ── WM Chat app
+williammunnich.com pages ── visit ping ─────────────────────────▶ statistics   ◀── /api/* ─────────────── WM Chat app
+cloudcut.team contact form ── one chat message per submission ─▶ chat service     (built 2026-11-13, not switched on yet)
+chat service ── push notifications through Apple ──────────────▶ WM Chat app
+site-engine + williammunnichcom-site + cloudcut-devlog ── build ▶ the files of williammunnich.com
+```
+
+**Decision, 2026-11-13.** William: "williammunnich.com, cloudcut.team, aws, and wmchat are all interconnected. make sure this connection is stated in each repo. future work would be seperate chat apps for william munnich and cloudcut but for now that same". So for now ONE app (WM Chat) and ONE chat function (the chat service
+of williammunnich.com) serve both williammunnich.com and cloudcut.team. Planned later: separate chat apps for
+William Munnich and for Cloudcut. Until then, messages from cloudcut.team's visitors are stored in William's
+personal AWS account.
+
 ## License
 
 [MIT](LICENSE)
