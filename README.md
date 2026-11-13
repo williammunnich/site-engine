@@ -57,30 +57,62 @@ node build.mjs --content <content-dir> --vault <vault-dir> --out dist --site-url
   `/blog/feed.xml` and removes the feed icon from the header and the feed link from every page's head. With
   `"feed": false` and a fixed `theme`, the header holds only the breadcrumb links back to the site.
 
+### Daily notes as posts
+
+Five more settings in `blog.config.json` let a vault publish its daily notes just as they are written, with no
+front matter. All are off unless set, so an existing site builds exactly as before.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `publishFolders` | `["posts"]` | Top-level vault folders whose notes are public without `publish: true`. `["posts", "daily"]` publishes every daily note. A note with `publish: false` or `draft: true` still stays out. |
+| `dateFormat` | `"MM-DD-YYYY"` | How a date with the year last is read, in a file name or a `date` property: `"MM-DD-YYYY"` (11-13-2026 is November 13), `"DD-MM-YYYY"` (13-11-2026 is November 13) or `"YYYY-MM-DD"` (year-last names are not dates). Year-first dates (2026-11-13) are understood with every setting. A date that cannot exist (month 13, February 30) stops the build with the file's name; so does a value that is not one of the three. |
+| `autoTitle` | `false` | `true`: a note with no `title` property takes its title from a `# heading` on its first line (the line is then not repeated in the body), and a note named only by a date gets the date written out ("November 13, 2026"). Otherwise the title is the file name. |
+| `lineBreaks` | `false` | `true`: a single line break inside a paragraph shows as a line break, as Obsidian shows it (its *Strict line breaks* setting is off by default). `false` joins the lines, as standard Markdown does. |
+| `failOnMissing` | `false` | `true`: the build stops when a published note points at an image or file that is not in the vault, listing every note and target. `false`: the build prints a warning for each and the page shows the file's name as grey text. |
+
+```json
+{ "publishFolders": ["posts", "daily"], "dateFormat": "MM-DD-YYYY", "autoTitle": true, "lineBreaks": true, "failOnMissing": true }
+```
+
+With these, `daily/11-13-2026.md` holding nothing but text becomes `/blog/11-13-2026/`, titled "November 13, 2026",
+sorted by that date. **Everything written in a publish folder is public on the next build** unless the note says
+`publish: false` or `draft: true`.
+
+Matching Obsidian settings for the vault (Settings → Files and links): *Default location for new attachments* =
+a folder such as `assets`, *New link format* = *Relative path to file*, *Use [[Wikilinks]]* = off. A pasted image is
+then saved as `assets/Pasted image 2026….png` and written as `![](../assets/Pasted%20image%202026….png)`, which
+shows in Obsidian, on GitHub and on the blog.
+
 Try it with the bundled example: `npm run build:example`, then `cd examples/dist && python3 -m http.server 8000`
 and open http://localhost:8000/blog/. Add `?theme=dark` or `?theme=light` to a blog URL to preview a theme
 (only with `"theme": "auto"`, the default; a fixed theme ignores it).
 
 ## Blog rules
 
-A note is published only if it is in `posts/` or its properties say `publish: true`, and never if they say
-`publish: false` or `draft: true`. `templates/`, `.obsidian/`, `.trash/` and other dot-folders are never read.
+A note is published only if it is in `posts/` (or another folder named in `publishFolders`) or its properties say
+`publish: true`, and never if they say `publish: false` or `draft: true`. `templates/`, `.obsidian/`, `.trash/` and other dot-folders are never read.
 
 Everything that points at another note is resolved against the published notes only:
 
 | In the note | Published target | Private or missing target |
 |---|---|---|
 | `[[Note]]`, `[[Note|alias]]`, `[[Note#Heading]]` | link to `/blog/<slug>/#heading` | plain text |
-| `[text](Note.md)` | link | text, no link |
+| `[text](Note.md)`, `[text](../daily/Note.md)` | link | plain text |
+| `[text](../assets/file.pdf)`, `![](file.pdf)`, `[[file.pdf]]` | link to the file, copied to `/blog/assets/` | plain text (reported as missing) |
 | `![[Note]]` | the note, embedded (one level) | nothing |
-| `![[image.png]]`, `![[image.png|300]]`, `![](attachments/x.png)` | image, copied to `/blog/assets/` with a content hash | "missing" text |
+| `![[image.png]]`, `![[image.png|300]]`, `![](../assets/x%20y.png)`, `![alt|300](../assets/x y.png)` | image, copied to `/blog/assets/` with a content hash | the file's name as grey text (reported as missing) |
 | backlinks ("Linked mentions") | listed | never listed |
 
-Attachments are copied only when a published note uses them. `%%comments%%` are removed. Raw HTML in a note is
+Attachments are copied only when a published note uses them. A file is looked up by its path from the note's own
+folder, then from the vault root, then by its name anywhere in the vault; `%20` escapes, spaces and non-English
+letters in file names all work. The copy is named `<name-as-slug>-<hash>.<ext>`, so its address never has spaces.
+A file that is not found is listed in the build output; `"failOnMissing": true` makes that an error. `%%comments%%` are removed. Raw HTML in a note is
 escaped unless `allowHtml` is on.
 
-The slug is the `slug` property or the file name (`My Post.md` → `my-post`). The date is the `date` property,
-or a daily-note file name (`YYYY-MM-DD` or `MM-DD-YYYY`), or the file's modified time.
+The slug is the `slug` property or the file name (`My Post.md` → `my-post`, `11-13-2026.md` → `11-13-2026`). The date
+is the `date` property, or a daily-note file name (`YYYY-MM-DD` or `MM-DD-YYYY`; `dateFormat` changes how a year-last
+name is read), or the file's modified time. Posts are listed newest first by that date. The title is the `title`
+property or the file name (`autoTitle` adds the first-line heading and the written-out date).
 
 ## The Obsidian look
 

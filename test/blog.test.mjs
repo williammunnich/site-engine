@@ -2,7 +2,9 @@
  * @file blog.test.mjs
  * Tests for the builder: builds the example content and fixture vault once, then checks the publish
  * rule, privacy, links, callouts, embeds, frontmatter, index/tag/feed pages and escaping. The options
- * (indexStyle, theme, feedTitle) get their own builds through buildWith().
+ * (indexStyle, theme, feedTitle) get their own builds through buildWith(). The daily-note options (publishFolders,
+ * dateFormat, autoTitle, lineBreaks, failOnMissing) are tested on a small vault that dailyVault() writes to a
+ * temporary folder, so file names with spaces and accents do not have to live in git.
  *
  * Run with: node --test test/
  *
@@ -17,7 +19,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from '../build.mjs';
-import { isPublished, parseNote, fixedThemeCss } from '../lib/blog.mjs';
+import { isPublished, parseNote, fixedThemeCss, leadingHeading } from '../lib/blog.mjs';
+import { isoDate, isRealDate } from '../lib/util.mjs';
 import { createMarkdown, stripComments } from '../lib/markdown.mjs';
 
 /** Folder of this test file. */
@@ -30,11 +33,12 @@ const CONTENT = path.join(HERE, '..', 'examples', 'content');
 /**
  * Builds the site into a fresh temporary folder.
  * @param {Object} [config] - Settings laid over the example's blog.config.json, to try an option.
+ * @param {string} [vault] - The vault to build from; the fixture vault by default.
  * @returns {{out: string, r: Object, files: string[], read: Function, all: Function}} The output folder, the build result, every written file, read(rel) for one file's text, and all() for every file's content joined.
  */
-function buildWith(config = {}) {
+function buildWith(config = {}, vault = VAULT) {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'site-engine-test-'));
-  const r = build({ content: CONTENT, vault: VAULT, out, siteUrl: 'https://example.com', config });
+  const r = build({ content: CONTENT, vault, out, siteUrl: 'https://example.com', config });
   const files = [];
   (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); e.isDirectory() ? walk(f) : files.push(f); } })(out);
   return { out, r, files, read: rel => fs.readFileSync(path.join(out, rel), 'utf8'), all: () => files.map(f => fs.readFileSync(f).toString('latin1')).join('\n') };
@@ -220,4 +224,164 @@ test('feed: false writes no feed and leaves no link to it; with a fixed theme th
   assert.ok(!G.includes('feed.xml') && G.includes('theme-toggle'));
   assert.ok(fs.existsSync(path.join(B.out, 'blog/feed.xml')));
   assert.match(B.read('blog/index.html'), /rel="alternate" type="application\/atom\+xml"/);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Daily notes as posts: publishFolders, dateFormat, autoTitle, lineBreaks, failOnMissing, pasted images and files
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Writes a small vault the way Obsidian leaves one when daily notes are the posts: notes named by date with no
+ * front matter, and pasted files in one assets/ folder, linked by relative path.
+ * @param {Object<string, string>} [extra] - More notes to write, as { "vault/path.md": "text" }.
+ * @returns {string} Path of the new vault folder.
+ */
+function dailyVault(extra = {}) {
+  const v = fs.mkdtempSync(path.join(os.tmpdir(), 'site-engine-vault-'));
+  const png = fs.readFileSync(path.join(VAULT, 'attachments', 'diagram.png'));
+  const notes = {
+    'daily/11-13-2026.md': [
+      'First line.', 'Second line of the same paragraph.', '',
+      '![](../assets/Pasted%20image%2020261113.png)',            // what Obsidian writes on paste
+      '![shot|200](../assets/Pasted image 20261113.png)',        // typed by hand, with a space and a width
+      '![[Pasted image 20261113.png]]',                          // Obsidian's own embed form
+      '![](../assets/caf%C3%A9%20photo.png)',                    // a file name that is not plain ASCII
+      '[the manual](../assets/User manual.pdf) and ![](../assets/User%20manual.pdf) and [[User manual.pdf]]', '',
+      'See [[11-12-2026]] and [yesterday](11-12-2026.md). Not public: [[11-10-2026]] and [hidden](11-10-2026.md) and [[notes]].',
+    ].join('\n'),
+    'daily/11-12-2026.md': '# A day with a heading\n\nBody of the twelfth.\n',
+    'daily/11-10-2026.md': '---\npublish: false\n---\nHIDDENDAILY\n',
+    'daily/01-02-2026.md': 'The second of January, or the first of February.\n',
+    'daily/idea.md': '---\ndraft: true\n---\nDRAFTDAILY\n',
+    'posts/Old post.md': '---\ndate: 2026-11-01\n---\nAn older post.\n',
+    'notes/notes.md': 'PRIVATENOTE outside the publish folders.\n',
+    ...extra,
+  };
+  for (const [rel, text] of Object.entries(notes)) {
+    fs.mkdirSync(path.join(v, path.dirname(rel)), { recursive: true });
+    fs.writeFileSync(path.join(v, rel), text);
+  }
+  fs.mkdirSync(path.join(v, 'assets'), { recursive: true });
+  for (const name of ['Pasted image 20261113.png', 'café photo.png', 'never used.png']) fs.writeFileSync(path.join(v, 'assets', name), png);
+  fs.writeFileSync(path.join(v, 'assets', 'User manual.pdf'), '%PDF-1.4 test');
+  return v;
+}
+/** The settings a site uses to publish its daily notes. */
+const DAILY = { publishFolders: ['posts', 'daily'], dateFormat: 'MM-DD-YYYY', autoTitle: true, lineBreaks: true, failOnMissing: true };
+
+test('publishFolders: notes in the listed folders publish with no front matter; publish: false and draft: true stay out', () => {
+  assert.equal(isPublished('daily/11-13-2026.md', {}, ['posts', 'daily']), true);
+  assert.equal(isPublished('daily/11-13-2026.md', {}), false, 'the default is still posts/ only');
+  assert.equal(isPublished('daily/a.md', { publish: false }, ['posts', 'daily']), false);
+  assert.equal(isPublished('daily/a.md', { draft: true }, ['posts', 'daily']), false);
+  assert.equal(isPublished('dailyish/a.md', {}, ['daily']), false, 'a folder name must match whole');
+  const D = buildWith(DAILY, dailyVault());
+  assert.deepEqual(D.r.blog.posts.map(p => p.slug), ['11-13-2026', '11-12-2026', 'old-post', '01-02-2026'], 'published notes, newest first');
+  const all = D.all();
+  for (const s of ['HIDDENDAILY', 'DRAFTDAILY', 'PRIVATENOTE']) assert.ok(!all.includes(s), s + ' leaked');
+  assert.ok(!fs.existsSync(path.join(D.out, 'blog/11-10-2026')) && !fs.existsSync(path.join(D.out, 'blog/idea')));
+  // without the option the same vault publishes only posts/
+  assert.deepEqual(buildWith({}, dailyVault()).r.blog.posts.map(p => p.slug), ['old-post']);
+});
+
+test('dateFormat: the file name gives the date, read month first or day first; impossible dates stop the build', () => {
+  assert.equal(isoDate('11-13-2026'), '2026-11-13');
+  assert.equal(isoDate('13-11-2026', 'DD-MM-YYYY'), '2026-11-13');
+  assert.equal(isoDate('2026-11-13', 'DD-MM-YYYY'), '2026-11-13', 'year-first is always understood');
+  assert.equal(isoDate('11-13-2026', 'YYYY-MM-DD'), '');
+  assert.equal(isRealDate('2026-11-13'), true);
+  assert.equal(isRealDate('2026-13-11'), false);
+  assert.equal(isRealDate('2026-02-30'), false);
+  const date = (D, slug) => D.r.blog.posts.find(p => p.slug === slug).date;
+  const M = buildWith(DAILY, dailyVault());
+  assert.equal(date(M, '11-13-2026'), '2026-11-13');
+  assert.equal(date(M, '01-02-2026'), '2026-01-02');
+  assert.equal(date(M, 'old-post'), '2026-11-01', 'a date property still works');
+  const idx = M.read('blog/index.html');
+  assert.ok(idx.indexOf('/blog/11-13-2026/') < idx.indexOf('/blog/11-12-2026/') && idx.indexOf('/blog/11-12-2026/') < idx.indexOf('/blog/old-post/')
+    && idx.indexOf('/blog/old-post/') < idx.indexOf('/blog/01-02-2026/'), 'the index is sorted by the real date, newest first');
+  // day first: the same file name is another day, and the US-order names are no longer dates
+  const dayFirst = dailyVault();
+  for (const f of ['11-13-2026.md', '11-12-2026.md', '11-10-2026.md']) fs.rmSync(path.join(dayFirst, 'daily', f));
+  fs.writeFileSync(path.join(dayFirst, 'daily', '13-11-2026.md'), 'Day first.\n');
+  const DF = buildWith({ ...DAILY, dateFormat: 'DD-MM-YYYY' }, dayFirst);
+  assert.equal(date(DF, '13-11-2026'), '2026-11-13');
+  assert.equal(date(DF, '01-02-2026'), '2026-02-01');
+  // month 13 is an error that names the file, not a guess
+  assert.throws(() => buildWith(DAILY, dayFirst), /daily\/13-11-2026\.md.*not a real date.*MM-DD-YYYY/);
+  assert.throws(() => buildWith(DAILY, dailyVault({ 'posts/x.md': '---\ndate: 2026-02-30\n---\nx' })), /posts\/x\.md.*not a real date/);
+  assert.throws(() => buildWith({ dateFormat: 'D/M/Y' }), /"dateFormat" must be one of/);
+});
+
+test('autoTitle: title property, else the first-line heading (shown once), else the date written out; off by default', () => {
+  const D = buildWith(DAILY, dailyVault({ 'posts/Named.md': '---\ntitle: From the property\n---\n# Heading stays\n' }));
+  const title = slug => D.r.blog.posts.find(p => p.slug === slug).title;
+  assert.equal(title('11-13-2026'), 'November 13, 2026');
+  assert.equal(title('11-12-2026'), 'A day with a heading');
+  assert.equal(title('old-post'), 'Old post', 'a name that is not a date stays the title');
+  assert.equal(title('named'), 'From the property');
+  const twelfth = D.read('blog/11-12-2026/index.html');
+  assert.match(twelfth, /<div class="inline-title" role="heading" aria-level="1">A day with a heading<\/div>/);
+  assert.ok(!twelfth.includes('<h1'), 'the heading that became the title is not repeated in the body');
+  assert.match(D.read('blog/named/index.html'), /<h1 id="heading-stays">/, 'with a title property the heading stays in the body');
+  assert.match(D.read('blog/index.html'), /href="\/blog\/11-13-2026\/"><strong>November 13, 2026<\/strong>|href="\/blog\/11-13-2026\/">November 13, 2026</);
+  assert.deepEqual(leadingHeading('\n# Hi there #\nbody'), { title: 'Hi there', body: 'body' });
+  assert.equal(leadingHeading('text\n# Later'), null);
+  assert.equal(leadingHeading('## Not level one'), null);
+  // off (the default): the file name is the title and the heading stays where it is
+  const off = buildWith({ publishFolders: ['daily'] }, dailyVault());
+  assert.equal(off.r.blog.posts.find(p => p.slug === '11-13-2026').title, '11-13-2026');
+  assert.match(off.read('blog/11-12-2026/index.html'), /<h1 id="a-day-with-a-heading">/);
+});
+
+test('pasted images and files: relative paths with %20, spaces and accents are copied and linked from the post', () => {
+  const D = buildWith(DAILY, dailyVault());
+  const h = D.read('blog/11-13-2026/index.html');
+  const img = /src="(\/blog\/assets\/pasted-image-20261113-[0-9a-f]{8}\.png)"/.exec(h);
+  assert.ok(img, 'the pasted image is on the page');
+  assert.equal(h.split(img[1]).length - 1, 3, 'the %20 form, the form with a space and the ![[embed]] all show the same file');
+  assert.match(h, /<img src="[^"]+" alt="shot" width="200" loading="lazy">/, '![alt|200](…) sets the width');
+  assert.match(h, /<img src="\/blog\/assets\/cafe-photo-[0-9a-f]{8}\.png"/);
+  const pdf = /href="(\/blog\/assets\/user-manual-[0-9a-f]{8}\.pdf)"[^>]*>the manual<\/a>/.exec(h);
+  assert.ok(pdf, 'a link to a PDF points at the copy');
+  assert.equal(h.split(pdf[1]).length - 1, 3, 'the link, the ![](pdf) form and the [[pdf]] form all link the file');
+  // every address on the page is a file that was written, and nothing unused was copied
+  for (const m of h.matchAll(/(?:src|href)="(\/blog\/assets\/[^"]+)"/g)) assert.ok(fs.existsSync(path.join(D.out, m[1])), m[1] + ' was not written');
+  assert.equal(D.r.blog.assets.length, 3);
+  assert.ok(!D.files.some(f => /never-used/.test(f)));
+  assert.deepEqual(D.r.blog.missing, []);
+  assert.ok(!h.includes('is-unresolved internal-embed') && !h.includes('internal-embed is-unresolved'));
+});
+
+test('links between daily notes: published targets are links, private or missing ones are plain text', () => {
+  const h = buildWith(DAILY, dailyVault()).read('blog/11-13-2026/index.html');
+  assert.match(h, /<a class="internal-link" data-href="11-12-2026" href="\/blog\/11-12-2026\/">11-12-2026<\/a>/);
+  assert.match(h, /<a href="\/blog\/11-12-2026\/" class="internal-link">yesterday<\/a>/);
+  assert.match(h, /<span class="internal-link is-unresolved">11-10-2026<\/span>/);
+  assert.match(h, /<span class="internal-link is-unresolved">hidden<\/span>/);
+  assert.match(h, /<span class="internal-link is-unresolved">notes<\/span>/);
+  assert.ok(!h.includes('href="#"') && !h.includes('11-10-2026/'), 'no dead link and no address of a private note');
+});
+
+test('lineBreaks: a single line break shows as one, like in Obsidian; off by default', () => {
+  assert.match(buildWith(DAILY, dailyVault()).read('blog/11-13-2026/index.html'), /First line\.<br>\s*Second line/);
+  assert.match(buildWith({ publishFolders: ['daily'] }, dailyVault()).read('blog/11-13-2026/index.html'), /First line\.\nSecond line/);
+});
+
+test('a missing image is reported, and with failOnMissing it stops the build naming the note and the file', () => {
+  const broken = { 'daily/11-14-2026.md': '![](../assets/not%20here.png) and ![[gone.png]] and [doc](../assets/gone.pdf)' };
+  assert.throws(() => buildWith(DAILY, dailyVault(broken)), err => {
+    assert.match(err.message, /3 missing attachment/);
+    assert.match(err.message, /daily\/11-14-2026\.md: \.\.\/assets\/not%20here\.png/);
+    assert.match(err.message, /daily\/11-14-2026\.md: gone\.png/);
+    assert.match(err.message, /daily\/11-14-2026\.md: \.\.\/assets\/gone\.pdf/);
+    return true;
+  });
+  // without the option the build goes through, the page shows the name as text, and the result lists what is missing
+  const soft = buildWith({ ...DAILY, failOnMissing: false }, dailyVault(broken));
+  assert.equal(soft.r.blog.missing.length, 3);
+  const h = soft.read('blog/11-14-2026/index.html');
+  assert.match(h, /<span class="internal-embed is-unresolved">/);
+  assert.ok(!h.includes('<img'), 'no broken image tag');
+  assert.match(h, /<span class="internal-link is-unresolved">doc<\/span>/);
 });

@@ -8,7 +8,8 @@
  * 1. <content>/site/** is copied to <out> as is.
  * 2. With --vault, the vault's published notes become a blog under <out>/blog/ (lib/blog.mjs).
  * Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml", "stylesheets",
- * "indexStyle", "theme", "feedTitle", "tags", "feed" }) and can be overridden with --blog-title / --blog-description.
+ * "indexStyle", "theme", "feedTitle", "tags", "feed", "publishFolders", "dateFormat", "autoTitle", "lineBreaks",
+ * "failOnMissing" }) and can be overridden with --blog-title / --blog-description. Each setting is explained in the README.
  *
  * Project: site-engine
  * @author Claude (Anthropic), written for and prompted by William Munnich
@@ -17,6 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildBlog } from './lib/blog.mjs';
+import { DATE_FORMATS } from './lib/util.mjs';
 
 /**
  * Turns "--key value" command-line words into an object; a flag with no value becomes true.
@@ -64,7 +66,8 @@ export function addToSitemap(file, siteUrl, urls) {
  * @param {string} [o.blogDescription] - Overrides the blog description from the config.
  * @param {Object} [o.config] - Settings that override blog.config.json key by key (used by the tests to try an option).
  * @returns {{out: string, blog: Object|null}} The output folder and what buildBlog wrote (null without a vault).
- * @throws {Error} When content or out is missing, or the content folder has no site/ folder.
+ * @throws {Error} When content or out is missing, the content folder has no site/ folder, "dateFormat" is not a known
+ *   format, a note's date cannot exist, or (with "failOnMissing") a note points at a file that is not in the vault.
  */
 export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescription, config = {} }) {
   if (!content || !out) throw new Error('usage: node build.mjs --content <dir> [--vault <dir>] --out <dir> [--site-url https://…]');
@@ -75,6 +78,10 @@ export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescri
   const cfgFile = path.join(content, 'blog.config.json');
   const cfg = { ...(fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {}), ...config };
   siteUrl = String(siteUrl || cfg.siteUrl || '').replace(/\/$/, '');
+  // An unknown date format is an error, not a silent default: read the wrong way round, 03-04-2026 is a different day.
+  if (cfg.dateFormat !== undefined && !DATE_FORMATS.includes(cfg.dateFormat)) {
+    throw new Error(`blog.config.json: "dateFormat" must be one of ${DATE_FORMATS.join(', ')} (got ${JSON.stringify(cfg.dateFormat)})`);
+  }
   let blog = null;
   if (vault) {
     const base = cfg.base || '/blog';
@@ -89,6 +96,12 @@ export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescri
       feedTitle: typeof cfg.feedTitle === 'string' ? cfg.feedTitle : '',
       tags: cfg.tags !== false,   // tags are on unless the config says exactly false
       feed: cfg.feed !== false,   // same for the Atom feed
+      // Folders whose notes are public without `publish: true`. An empty or missing list means the default, posts/.
+      publishFolders: Array.isArray(cfg.publishFolders) && cfg.publishFolders.length ? cfg.publishFolders.map(String) : ['posts'],
+      dateFormat: cfg.dateFormat || 'MM-DD-YYYY',
+      autoTitle: cfg.autoTitle === true,
+      lineBreaks: cfg.lineBreaks === true,
+      failOnMissing: cfg.failOnMissing === true,
     });
     addToSitemap(path.join(out, 'sitemap.xml'), siteUrl, blog.urls);
   }
@@ -101,5 +114,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   try {
     const r = build({ content: a.content, vault: a.vault, out: a.out, siteUrl: a['site-url'], blogTitle: a['blog-title'], blogDescription: a['blog-description'] });
     console.log(`built ${r.out}` + (r.blog ? `: ${r.blog.posts.length} posts, ${r.blog.tags.length} tags, ${r.blog.assets.length} attachments` : ''));
+    // Without "failOnMissing" a missing image does not stop the build, but it is never silent.
+    for (const m of r.blog ? r.blog.missing : []) console.error(`warning: ${m.note} points at "${m.target}", which is not in the vault`);
   } catch (err) { console.error(err.message); process.exit(1); }
 }
