@@ -53,6 +53,9 @@ node build.mjs --content <content-dir> --vault <vault-dir> --out dist --site-url
   `/blog/tags/...` pages (none are written, linked or added to the sitemap), no categories in the feed, and a
   `#tag` written in a post shows as plain text. The notes in the vault keep their tags; nothing there changes.
 - `feedTitle` in `blog.config.json` names the Atom feed (default: `title`). Useful when `title` is just "Blog".
+- `backlinks` in `blog.config.json`: leave it out (or `true`) for the "Linked mentions" block under each note,
+  which lists the published notes that link to it. `"backlinks": false` leaves the block and the divider line
+  above it off every note page.
 - `feed` in `blog.config.json`: leave it out (or `true`) for the Atom feed. `"feed": false` writes no
   `/blog/feed.xml` and removes the feed icon from the header and the feed link from every page's head. With
   `"feed": false` and a fixed `theme`, the header holds only the breadcrumb links back to the site.

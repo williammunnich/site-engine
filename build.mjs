@@ -8,7 +8,7 @@
  * 1. <content>/site/** is copied to <out> as is.
  * 2. With --vault, the vault's published notes become a blog under <out>/blog/ (lib/blog.mjs).
  * Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml", "stylesheets",
- * "indexStyle", "theme", "feedTitle", "tags", "feed", "publishFolders", "dateFormat", "autoTitle", "lineBreaks",
+ * "indexStyle", "theme", "feedTitle", "tags", "feed", "backlinks", "publishFolders", "dateFormat", "autoTitle", "lineBreaks",
  * "failOnMissing" }) and can be overridden with --blog-title / --blog-description. Each setting is explained in the README.
  *
  * Project: site-engine
@@ -96,6 +96,7 @@ export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescri
       feedTitle: typeof cfg.feedTitle === 'string' ? cfg.feedTitle : '',
       tags: cfg.tags !== false,   // tags are on unless the config says exactly false
       feed: cfg.feed !== false,   // same for the Atom feed
+      backlinks: cfg.backlinks !== false,   // and for the "Linked mentions" block under each note
       // Folders whose notes are public without `publish: true`. An empty or missing list means the default, posts/.
       publishFolders: Array.isArray(cfg.publishFolders) && cfg.publishFolders.length ? cfg.publishFolders.map(String) : ['posts'],
       dateFormat: cfg.dateFormat || 'MM-DD-YYYY',

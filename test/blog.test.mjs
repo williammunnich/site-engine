@@ -213,6 +213,13 @@ test('tags: false removes tags everywhere a reader could see them; the default k
   assert.match(B.read('blog/feed.xml'), /<category term=/);
 });
 
+test('backlinks: false leaves "Linked mentions" and its footer off note pages; the default keeps them', () => {
+  const note = buildWith({ backlinks: false }).read('blog/hello-world/index.html');
+  for (const gone of ['mod-footer', 'embedded-backlinks', 'Linked mentions', 'No backlinks found']) assert.ok(!note.includes(gone), gone + ' is still on the note page');
+  assert.ok(note.includes('<article class="note-content">'), 'the note itself is still there');
+  assert.ok(B.read('blog/hello-world/index.html').includes('Linked mentions'), 'default build keeps the block');
+});
+
 test('feed: false writes no feed and leaves no link to it; with a fixed theme the header is only the breadcrumbs', () => {
   const F = buildWith({ feed: false, theme: 'light' });
   assert.ok(!fs.existsSync(path.join(F.out, 'blog/feed.xml')), 'feed.xml was written');
