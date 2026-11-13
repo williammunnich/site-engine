@@ -12,7 +12,8 @@
 #   var    SITE_URL           e.g. https://example.com
 #   var    DEPLOY_ENABLED     'true' to deploy. Leave unset: the build still runs and uploads dist as an artifact.
 #   var    AWS_ROLE_ARN       IAM role trusted for GitHub OIDC (this repo, main branch only), allowed to
-#                             s3:ListBucket/PutObject/DeleteObject on the site bucket and cloudfront:CreateInvalidation
+#                             s3:ListBucket/PutObject/DeleteObject on the site bucket and cloudfront:CreateInvalidation.
+#                             The trust policy's subject must be exactly  repo:OWNER/CONTENT-REPO:ref:refs/heads/main
 #   var    SITE_BUCKET, DIST_ID, AWS_REGION (default us-east-1)
 name: Build site
 on:
@@ -86,10 +87,13 @@ jobs:
     needs: build
     if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
+    # No `environment:` line on purpose (removed 2026-11-13; was `environment: production`). With one, GitHub's
+    # token names the environment instead of the branch (repo:OWNER/REPO:environment:production), so an AWS role
+    # that trusts "this repo, main branch only" would refuse it, and trusting the environment instead would drop
+    # the branch lock. Without it the token says repo:OWNER/REPO:ref:refs/heads/main.
     permissions:
       contents: read
-      id-token: write
+      id-token: write        # lets this job ask GitHub for the signed token that AWS exchanges for the role
     steps:
       - uses: actions/download-artifact@v4
         with:

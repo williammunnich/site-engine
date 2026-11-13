@@ -75,3 +75,10 @@ gh variable set SITE_URL -R OWNER/CONTENT-REPO --body https://example.com
 **Deploying** needs an IAM role that trusts GitHub's OIDC provider for the content repo's `main` branch, with
 permission to sync the site bucket and invalidate the distribution. Set `AWS_ROLE_ARN`, `SITE_BUCKET`, `DIST_ID`,
 then `DEPLOY_ENABLED=true`. Until then nothing is deployed.
+
+The role's trust policy must allow exactly the subject `repo:OWNER/CONTENT-REPO:ref:refs/heads/main` (and the
+audience `sts.amazonaws.com`). That is the subject GitHub sends because the template's deploy job names no GitHub
+`environment`; do not add one, or the subject changes to `repo:OWNER/CONTENT-REPO:environment:NAME` and a
+branch-locked role refuses the run. This engine ships no AWS code: the role is made in the content repo (for
+williammunnich.com: `bash aws/setup.sh oidc` there). When the engine and the content both changed, push the engine
+first: see [release.md](release.md).

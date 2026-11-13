@@ -103,7 +103,11 @@ Not supported yet: Mermaid, math, Dataview, block references (`^id`), canvas fil
 this engine and the vault (with a read-only deploy key), runs the tests, builds, and uploads `dist` as an artifact.
 Its deploy job (S3 sync and CloudFront invalidation through an OIDC role) runs only when the repo variable
 `DEPLOY_ENABLED` is `true`. The vault triggers it with a `repository_dispatch` event called `devlog-updated`.
-Setup steps are in [docs/blog.md](docs/blog.md).
+Setup steps are in [docs/blog.md](docs/blog.md). The deploy job names no GitHub `environment`, so that an AWS role can be
+locked to the content repo's `main` branch.
+
+This repo has no workflow of its own. Releasing it means pushing it to GitHub **before** the content repo that
+depends on the change: [docs/release.md](docs/release.md).
 
 ## Files
 
@@ -118,6 +122,8 @@ Setup steps are in [docs/blog.md](docs/blog.md).
 | `test/` | `node --test` suite and a fixture vault full of private notes that must not leak |
 | `examples/content/` | A tiny content folder for trying the build |
 | `templates/github/site-build.yml` | The build-and-deploy workflow for the content repo |
+| `docs/blog.md` | How to write and publish a post, and the one-time setup of the vault, the token and the variables |
+| `docs/release.md` | How a change to this engine reaches a site: push order, checklist, pinning, rollback |
 | `tools/make-png.py` | Writes small solid PNGs for fixtures, with no dependencies |
 
 ## License
