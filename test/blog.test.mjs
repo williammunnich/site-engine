@@ -1,13 +1,14 @@
 /**
  * @file blog.test.mjs
  * Tests for the builder: builds the example content and fixture vault once, then checks the publish
- * rule, privacy, links, callouts, embeds, frontmatter, index/tag/feed pages and escaping.
+ * rule, privacy, links, callouts, embeds, frontmatter, index/tag/feed pages and escaping. The options
+ * (indexStyle, theme, feedTitle) get their own builds through buildWith().
  *
  * Run with: node --test test/
  *
  * Project: site-engine
  * @author Claude (Anthropic), written for and prompted by William Munnich
- * @date Last edited 2026-11-12
+ * @date Last edited 2026-11-13
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from '../build.mjs';
-import { isPublished, parseNote } from '../lib/blog.mjs';
+import { isPublished, parseNote, fixedThemeCss } from '../lib/blog.mjs';
 import { createMarkdown, stripComments } from '../lib/markdown.mjs';
 
 /** Folder of this test file. */
@@ -28,17 +29,18 @@ const CONTENT = path.join(HERE, '..', 'examples', 'content');
 
 /**
  * Builds the site into a fresh temporary folder.
+ * @param {Object} [config] - Settings laid over the example's blog.config.json, to try an option.
  * @returns {{out: string, r: Object, files: string[], read: Function, all: Function}} The output folder, the build result, every written file, read(rel) for one file's text, and all() for every file's content joined.
  */
-function buildOnce() {
+function buildWith(config = {}) {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'site-engine-test-'));
-  const r = build({ content: CONTENT, vault: VAULT, out, siteUrl: 'https://example.com' });
+  const r = build({ content: CONTENT, vault: VAULT, out, siteUrl: 'https://example.com', config });
   const files = [];
   (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); e.isDirectory() ? walk(f) : files.push(f); } })(out);
   return { out, r, files, read: rel => fs.readFileSync(path.join(out, rel), 'utf8'), all: () => files.map(f => fs.readFileSync(f).toString('latin1')).join('\n') };
 }
 /** The one build that all tests inspect. */
-const B = buildOnce();
+const B = buildWith();
 
 test('publish rule: posts/ folder or publish: true; never publish: false or draft: true', () => {
   assert.equal(isPublished('posts/a.md', {}), true);
@@ -125,4 +127,97 @@ test('HTML is escaped; comments are stripped; task lists and highlights render',
   assert.match(md.render('- [x] done'), /checked> done/);
   assert.match(md.render('==hi=='), /<mark>hi<\/mark>/);
   assert.match(md.render('[[a|<b>]]', { resolve: () => ({ id: 'a', url: '/blog/a/', title: 'a' }), links: new Set() }), /&lt;b&gt;/);
+});
+
+test('default index and theme are unchanged when no option is set', () => {
+  const idx = B.read('blog/index.html');
+  assert.match(idx, /<ul class="post-list">/);
+  assert.match(idx, /class="post-meta"><time datetime=/, 'dates are shown');
+  assert.match(idx, /<p class="blog-description">/);
+  assert.match(idx, /<h2 id="tags">Tags<\/h2><p class="tag-cloud">/);
+  assert.ok(!idx.includes('post-divider') && !idx.includes('post-list-simple'), 'no simple-style markup');
+  assert.match(idx, /<html lang="en">/);
+  assert.match(idx, /<script src="\/blog\/theme\.js"><\/script>/);
+  assert.match(idx, /class="clickable-icon theme-toggle"/);
+  assert.ok(fs.existsSync(path.join(B.out, 'blog/theme.js')));
+  assert.match(B.read('blog/obsidian.css'), /prefers-color-scheme: dark/);
+  assert.match(B.read('blog/feed.xml'), /<title>Devlog<\/title>/, 'the feed is named after the blog title');
+});
+
+test('indexStyle "simple": heading, bold linked titles, previews, dividers between posts, nothing else', () => {
+  const S = buildWith({ indexStyle: 'simple', title: 'Blog' });
+  const idx = S.read('blog/index.html');
+  assert.match(idx, /<div class="inline-title" role="heading" aria-level="1">Blog<\/div>/);
+  assert.match(idx, /<a class="post-title internal-link" href="\/blog\/second\/"><strong>Second post<\/strong><\/a>\n<p class="post-excerpt">[^<]+<\/p>/);
+  assert.match(idx, /<a class="post-title internal-link" href="\/blog\/hello-world\/"><strong>[^<]+<\/strong><\/a>\n<p class="post-excerpt">[^<]+<\/p>/);
+  assert.ok(idx.indexOf('/blog/second/') < idx.indexOf('/blog/hello-world/'), 'newest first');
+  // two posts, so exactly one divider, and it sits between them
+  assert.equal(idx.split('<hr class="post-divider">').length - 1, S.r.blog.posts.length - 1);
+  const d = idx.indexOf('<hr class="post-divider">');
+  assert.ok(idx.indexOf('/blog/second/') < d && d < idx.indexOf('/blog/hello-world/'), 'divider between the posts');
+  for (const gone of ['tag-cloud', 'id="tags"', 'post-meta', 'post-tags', '<time', 'blog-description', '/blog/tags/']) assert.ok(!idx.includes(gone), gone + ' is on the simple index');
+  // the rest of the blog is untouched: post pages, tag pages and the header link home
+  assert.match(S.read('blog/hello-world/index.html'), /class="metadata-container"/);
+  assert.match(S.read('blog/tags/cloudcut/index.html'), /hello-world/);
+  assert.match(idx, /<a class="view-header-breadcrumb" href="\/">example\.com<\/a>/);
+  assert.match(S.read('blog/obsidian.css'), /hr\.post-divider/);
+});
+
+test('theme "light": one fixed theme, no button, no script, no dark rules', () => {
+  const L = buildWith({ theme: 'light' });
+  for (const page of ['blog/index.html', 'blog/hello-world/index.html', 'blog/tags/cloudcut/index.html']) {
+    const h = L.read(page);
+    assert.match(h, /<html lang="en" class="theme-light">/, page);
+    for (const gone of ['theme-toggle', 'theme.js', 'when-dark', 'when-light', 'Switch light/dark']) assert.ok(!h.includes(gone), `${gone} left in ${page}`);
+    assert.match(h, /<div class="view-actions">\s*<a class="clickable-icon" href="\/blog\/feed\.xml" aria-label="Feed"/, 'the feed link stays');
+  }
+  assert.ok(!fs.existsSync(path.join(L.out, 'blog/theme.js')), 'theme.js is not copied');
+  const css = L.read('blog/obsidian.css');
+  for (const gone of ['prefers-color-scheme', ':root.theme-dark', ':root:not(.theme-light)', 'theme-switch:start', 'theme-dark:start', 'when-dark', '#1e1e1e']) assert.ok(!css.includes(gone), gone + ' left in the stylesheet');
+  assert.match(css, /--color-base-00: #ffffff/, 'the light values stay');
+  assert.match(css, /\.post-title \{/, 'the rest of the stylesheet stays');
+});
+
+test('theme "dark" keeps the dark values and drops the switch; unknown values mean "auto"; feedTitle names the feed', () => {
+  const D = buildWith({ theme: 'dark', feedTitle: 'Example devlog' });
+  assert.match(D.read('blog/index.html'), /<html lang="en" class="theme-dark">/);
+  const css = D.read('blog/obsidian.css');
+  assert.ok(!css.includes('prefers-color-scheme') && !css.includes('when-dark'));
+  assert.match(css, /:root\.theme-dark \{[^}]*--color-base-00: #1e1e1e/);
+  assert.match(D.read('blog/feed.xml'), /<title>Example devlog<\/title>/);
+  assert.match(D.read('blog/index.html'), /type="application\/atom\+xml" title="Example devlog"/);
+  assert.match(buildWith({ theme: 'sepia', indexStyle: 'fancy' }).read('blog/index.html'), /theme-toggle[\s\S]*<ul class="post-list">/);
+  assert.throws(() => fixedThemeCss('a /* theme-switch:start */ b', 'light'), /no matching/);
+});
+
+test('tags: false removes tags everywhere a reader could see them; the default keeps them', () => {
+  const T = buildWith({ tags: false });
+  assert.deepEqual(T.r.blog.tags, []);
+  assert.ok(!T.files.some(f => f.includes(`${path.sep}tags${path.sep}`)), 'a tag page was written');
+  assert.ok(!T.r.blog.urls.some(u => u.includes('/tags/')), 'a tag page is in the url list');
+  assert.ok(!T.read('sitemap.xml').includes('/tags/'), 'a tag page is in the sitemap');
+  const all = ['blog/index.html', 'blog/hello-world/index.html', 'blog/second/index.html', 'blog/feed.xml'].map(f => T.read(f)).join('\n');
+  for (const gone of ['/tags/', 'class="tag"', 'tag-cloud', 'post-tags', 'multi-select-pill tag', 'data-property-key="tags"', '<category']) assert.ok(!all.includes(gone), gone + ' left with tags off');
+  // an inline #tag keeps its words as plain text, and the other properties still show
+  const md = createMarkdown();
+  assert.equal(md.render('a #cloud/cut b', { showTags: false }).trim(), '<p>a #cloud/cut b</p>');
+  assert.match(md.render('a #cloud/cut b', { base: '/blog' }), /<a href="\/blog\/tags\/cloud\/cut\/" class="tag">#cloud\/cut<\/a>/);
+  assert.match(T.read('blog/hello-world/index.html'), /data-property-key="status"/);
+  // default build: tags are all still there
+  assert.ok(B.files.some(f => f.includes(`${path.sep}tags${path.sep}`)));
+  assert.match(B.read('blog/hello-world/index.html'), /data-property-key="tags"/);
+  assert.match(B.read('blog/feed.xml'), /<category term=/);
+});
+
+test('feed: false writes no feed and leaves no link to it; with a fixed theme the header is only the breadcrumbs', () => {
+  const F = buildWith({ feed: false, theme: 'light' });
+  assert.ok(!fs.existsSync(path.join(F.out, 'blog/feed.xml')), 'feed.xml was written');
+  const pages = F.files.filter(f => f.endsWith('.html') || f.endsWith('.xml')).map(f => fs.readFileSync(f, 'utf8')).join('\n');
+  for (const gone of ['feed.xml', 'application/atom+xml', 'aria-label="Feed"', 'view-actions', 'clickable-icon']) assert.ok(!pages.includes(gone), gone + ' left with the feed off');
+  assert.match(F.read('blog/index.html'), /<nav class="view-header-breadcrumbs"[\s\S]*?<\/nav>\s*<\/div>\s*<main/, 'nothing after the breadcrumbs in the header');
+  // feed off alone keeps the theme button; the default build keeps the feed
+  const G = buildWith({ feed: false }).read('blog/index.html');
+  assert.ok(!G.includes('feed.xml') && G.includes('theme-toggle'));
+  assert.ok(fs.existsSync(path.join(B.out, 'blog/feed.xml')));
+  assert.match(B.read('blog/index.html'), /rel="alternate" type="application\/atom\+xml"/);
 });

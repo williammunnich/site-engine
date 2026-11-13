@@ -39,9 +39,27 @@ node build.mjs --content <content-dir> --vault <vault-dir> --out dist --site-url
 - `stylesheets` in `blog.config.json` is a list of extra CSS files loaded after the built-in Obsidian theme on
   every blog page, for example `["/assets/blog-theme.css"]`. Use it to make the blog match the rest of a site
   (colours, fonts, header) without changing the engine. Paths are served from the content's own files.
+- `indexStyle` in `blog.config.json` picks the look of the blog's front page. `"default"` (or leaving it out) is
+  the title, the description, every post with its date, tags and summary, and a tag cloud. `"simple"` is only the
+  title as the page heading (set `"title": "Blog"` for a page that says Blog), then each post as its title in bold
+  (a link to the post) with a short preview under it, and a full-width divider line between posts. No description,
+  dates, tags or tag cloud on that page; post pages, tag pages and the feed are unchanged.
+- `theme` in `blog.config.json`: `"auto"` (or leaving it out) follows the reader's system setting and puts a
+  light/dark button in the header. `"light"` or `"dark"` gives one fixed theme: the button and `theme.js` are left
+  out, and the `obsidian.css` written to the output has no `prefers-color-scheme` rule and (for `"light"`) no dark
+  values at all. If the site's own stylesheet (see `stylesheets`) has dark rules, remove those too.
+- `tags` in `blog.config.json`: leave it out (or `true`) for tags as described below. `"tags": false` switches tags
+  off for the whole blog: no tag chips on the index or in a post's Properties block, no tag cloud, no
+  `/blog/tags/...` pages (none are written, linked or added to the sitemap), no categories in the feed, and a
+  `#tag` written in a post shows as plain text. The notes in the vault keep their tags; nothing there changes.
+- `feedTitle` in `blog.config.json` names the Atom feed (default: `title`). Useful when `title` is just "Blog".
+- `feed` in `blog.config.json`: leave it out (or `true`) for the Atom feed. `"feed": false` writes no
+  `/blog/feed.xml` and removes the feed icon from the header and the feed link from every page's head. With
+  `"feed": false` and a fixed `theme`, the header holds only the breadcrumb links back to the site.
 
 Try it with the bundled example: `npm run build:example`, then `cd examples/dist && python3 -m http.server 8000`
-and open http://localhost:8000/blog/. Add `?theme=dark` or `?theme=light` to a blog URL to preview a theme.
+and open http://localhost:8000/blog/. Add `?theme=dark` or `?theme=light` to a blog URL to preview a theme
+(only with `"theme": "auto"`, the default; a fixed theme ignores it).
 
 ## Blog rules
 
@@ -72,8 +90,10 @@ names Obsidian uses for the reading view, so most Obsidian CSS snippets apply to
 lists, tables, code blocks, quotes, highlights, tags (also nested `#a/b`), callouts (every standard type and alias,
 `-`/`+` folding with no JavaScript), the Properties block, embeds and "Linked mentions". The callout icons are
 [Lucide](https://lucide.dev) icons (ISC license), the set Obsidian uses. Light and dark follow the system; the
-header button switches and remembers the choice in `localStorage` (`theme.js`). No fonts or scripts load from
-other sites.
+header button switches and remembers the choice in `localStorage` (`theme.js`). A site can instead fix one theme
+with `"theme": "light"` or `"dark"` (see Use): the parts of `obsidian.css` between the `theme-switch` and
+`theme-dark` marker comments are then cut from the output by `fixedThemeCss` in `lib/blog.mjs`. No fonts or
+scripts load from other sites.
 
 Not supported yet: Mermaid, math, Dataview, block references (`^id`), canvas files and a graph view.
 
@@ -92,7 +112,7 @@ Setup steps are in [docs/blog.md](docs/blog.md).
 | `build.mjs` | Command line entry point: copies the content, builds the blog, updates the sitemap |
 | `lib/blog.mjs` | Reads the vault, applies the publish rule, resolves links, writes pages, tags, feed, assets |
 | `lib/markdown.mjs` | markdown-it with Obsidian syntax: wikilinks, embeds, tags, callouts, tasks, highlights, comments |
-| `lib/templates.mjs` | Page HTML: header, inline title, Properties, note, Linked mentions; index, tag pages, Atom feed |
+| `lib/templates.mjs` | Page HTML: header, inline title, Properties, note, Linked mentions; index (default and simple), tag pages, Atom feed |
 | `lib/icons.mjs` | Lucide icons for callouts |
 | `blog/theme/` | `obsidian.css` and `theme.js`, copied into `dist/blog/` |
 | `test/` | `node --test` suite and a fixture vault full of private notes that must not leak |

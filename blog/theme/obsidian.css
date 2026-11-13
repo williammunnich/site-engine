@@ -1,6 +1,11 @@
 /* A static look-alike of Obsidian's default theme, reading view. Written from scratch for this project, using the
    default theme's published variable values (colors, sizes, fonts), so notes look the way they do in the app.
-   Light and dark follow the system; the header button switches and remembers (theme.js). */
+   Light and dark follow the system; the header button switches and remembers (theme.js).
+
+   One fixed theme: when a site sets "theme": "light" or "dark" in blog.config.json, lib/blog.mjs (fixedThemeCss)
+   cuts the marked parts out of the copy it writes. "theme-switch" parts exist only to follow the system setting
+   and to draw the header button; "theme-dark" parts hold the dark values. Keep every such rule inside its markers.
+   @date Last edited 2026-11-13 */
 
 :root {
   --font-default: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
@@ -41,6 +46,7 @@
   color-scheme: light;
 }
 
+/* theme-switch:start */
 /* dark: the system setting, unless the reader picked light; or the reader picked dark */
 @media (prefers-color-scheme: dark) {
   :root:not(.theme-light) {
@@ -57,6 +63,8 @@
     color-scheme: dark;
   }
 }
+/* theme-switch:end */
+/* theme-dark:start */
 :root.theme-dark {
   --color-red-rgb: 251, 70, 76; --color-orange-rgb: 233, 151, 63; --color-yellow-rgb: 224, 222, 113; --color-green-rgb: 68, 207, 110;
   --color-cyan-rgb: 83, 223, 221; --color-blue-rgb: 2, 122, 255; --color-purple-rgb: 168, 130, 255; --color-pink-rgb: 250, 153, 205;
@@ -70,6 +78,7 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   color-scheme: dark;
 }
+/* theme-dark:end */
 
 :root {
   --background-primary: var(--color-base-00);
@@ -93,8 +102,12 @@
   --hr-color: var(--background-modifier-border);
   --table-border-color: var(--background-modifier-border);
 }
+/* theme-dark:start */
 :root.theme-dark { --background-modifier-hover: rgba(255, 255, 255, 0.075); }
+/* theme-dark:end */
+/* theme-switch:start */
 @media (prefers-color-scheme: dark) { :root:not(.theme-light) { --background-modifier-hover: rgba(255, 255, 255, 0.075); } }
+/* theme-switch:end */
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -120,9 +133,11 @@ body {
 .clickable-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-s);
   background: none; color: var(--text-muted); cursor: pointer; }
 .clickable-icon:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+/* theme-switch:start */
 .when-dark { display: none; }
 :root.theme-dark .when-dark { display: inline-flex; } :root.theme-dark .when-light { display: none; }
 @media (prefers-color-scheme: dark) { :root:not(.theme-light) .when-dark { display: inline-flex; } :root:not(.theme-light) .when-light { display: none; } }
+/* theme-switch:end */
 
 /* ---------- reading view */
 .markdown-preview-view { padding: var(--size-4-8) var(--size-4-8) 0; }
@@ -270,6 +285,11 @@ a.search-result-file-title:hover { color: var(--text-accent); }
 .post-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .post-excerpt { margin: 6px 0 0; color: var(--text-muted); }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* the "simple" front page ("indexStyle": "simple"): bold linked titles, a short preview, a full-width line between posts */
+.post-simple .post-title strong { font-weight: 700; color: inherit; }
+.post-simple .post-excerpt { font-size: var(--font-smaller); }
+.markdown-rendered hr.post-divider, hr.post-divider { width: 100%; border: 0; border-top: 1px solid var(--hr-color); margin: var(--size-4-6) 0; }
 
 @media print { .view-header, .mod-footer { display: none; } }
 @media (prefers-reduced-motion: reduce) { .callout-fold .svg-icon { transition: none; } }

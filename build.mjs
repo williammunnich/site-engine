@@ -7,12 +7,12 @@
  *
  * 1. <content>/site/** is copied to <out> as is.
  * 2. With --vault, the vault's published notes become a blog under <out>/blog/ (lib/blog.mjs).
- * Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml", "stylesheets" })
- * and can be overridden with --blog-title / --blog-description.
+ * Blog settings come from <content>/blog.config.json ({ "title", "description", "siteName", "base", "allowHtml", "stylesheets",
+ * "indexStyle", "theme", "feedTitle", "tags", "feed" }) and can be overridden with --blog-title / --blog-description.
  *
  * Project: site-engine
  * @author Claude (Anthropic), written for and prompted by William Munnich
- * @date Last edited 2026-11-12
+ * @date Last edited 2026-11-13
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -62,17 +62,18 @@ export function addToSitemap(file, siteUrl, urls) {
  * @param {string} [o.siteUrl] - Public site address; falls back to siteUrl in blog.config.json.
  * @param {string} [o.blogTitle] - Overrides the blog title from the config.
  * @param {string} [o.blogDescription] - Overrides the blog description from the config.
+ * @param {Object} [o.config] - Settings that override blog.config.json key by key (used by the tests to try an option).
  * @returns {{out: string, blog: Object|null}} The output folder and what buildBlog wrote (null without a vault).
  * @throws {Error} When content or out is missing, or the content folder has no site/ folder.
  */
-export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescription }) {
+export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescription, config = {} }) {
   if (!content || !out) throw new Error('usage: node build.mjs --content <dir> [--vault <dir>] --out <dir> [--site-url https://…]');
   const site = path.join(content, 'site');
   if (!fs.existsSync(site)) throw new Error(`no site/ folder in ${content}`);
   fs.rmSync(out, { recursive: true, force: true });
   fs.cpSync(site, out, { recursive: true, filter: src => path.basename(src) !== '.DS_Store' });
   const cfgFile = path.join(content, 'blog.config.json');
-  const cfg = fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {};
+  const cfg = { ...(fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : {}), ...config };
   siteUrl = String(siteUrl || cfg.siteUrl || '').replace(/\/$/, '');
   let blog = null;
   if (vault) {
@@ -82,6 +83,12 @@ export function build({ content, vault, out, siteUrl = '', blogTitle, blogDescri
       title: blogTitle || cfg.title || 'Blog', description: blogDescription || cfg.description || '',
       siteName: cfg.siteName || '', homeUrl: cfg.homeUrl || '/', allowHtml: !!cfg.allowHtml,
       stylesheets: Array.isArray(cfg.stylesheets) ? cfg.stylesheets : [],
+      // Only the known values are passed on, so a typo in the config gives today's default, not a half-applied option.
+      indexStyle: cfg.indexStyle === 'simple' ? 'simple' : 'default',
+      theme: cfg.theme === 'light' || cfg.theme === 'dark' ? cfg.theme : 'auto',
+      feedTitle: typeof cfg.feedTitle === 'string' ? cfg.feedTitle : '',
+      tags: cfg.tags !== false,   // tags are on unless the config says exactly false
+      feed: cfg.feed !== false,   // same for the Atom feed
     });
     addToSitemap(path.join(out, 'sitemap.xml'), siteUrl, blog.urls);
   }
