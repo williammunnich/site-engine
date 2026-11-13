@@ -289,6 +289,8 @@ a.search-result-file-title:hover { color: var(--text-accent); }
 /* the "simple" front page ("indexStyle": "simple"): bold linked titles, a short preview, a full-width line between posts */
 .post-simple .post-title strong { font-weight: 700; color: inherit; }
 .post-simple .post-excerpt { font-size: var(--font-smaller); }
+/* The preview text is a second link to the post (simple index). It keeps the look of plain preview text. */
+.post-simple .post-excerpt-link { display: block; color: inherit; text-decoration: none; cursor: pointer; }
 .markdown-rendered hr.post-divider, hr.post-divider { width: 100%; border: 0; border-top: 1px solid var(--hr-color); margin: var(--size-4-6) 0; }
 
 @media print { .view-header, .mod-footer { display: none; } }

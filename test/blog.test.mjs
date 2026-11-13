@@ -152,8 +152,8 @@ test('indexStyle "simple": heading, bold linked titles, previews, dividers betwe
   const S = buildWith({ indexStyle: 'simple', title: 'Blog' });
   const idx = S.read('blog/index.html');
   assert.match(idx, /<div class="inline-title" role="heading" aria-level="1">Blog<\/div>/);
-  assert.match(idx, /<a class="post-title internal-link" href="\/blog\/second\/"><strong>Second post<\/strong><\/a>\n<p class="post-excerpt">[^<]+<\/p>/);
-  assert.match(idx, /<a class="post-title internal-link" href="\/blog\/hello-world\/"><strong>[^<]+<\/strong><\/a>\n<p class="post-excerpt">[^<]+<\/p>/);
+  assert.match(idx, /<a class="post-title internal-link" href="\/blog\/second\/"><strong>Second post<\/strong><\/a>\n<p class="post-excerpt"><a class="post-excerpt-link" href="\/blog\/second\/" tabindex="-1">[^<]+<\/a><\/p>/);
+  assert.match(idx, /<a class="post-title internal-link" href="\/blog\/hello-world\/"><strong>[^<]+<\/strong><\/a>\n<p class="post-excerpt"><a class="post-excerpt-link" href="\/blog\/hello-world\/" tabindex="-1">[^<]+<\/a><\/p>/);
   assert.ok(idx.indexOf('/blog/second/') < idx.indexOf('/blog/hello-world/'), 'newest first');
   // two posts, so exactly one divider, and it sits between them
   assert.equal(idx.split('<hr class="post-divider">').length - 1, S.r.blog.posts.length - 1);
